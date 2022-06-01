@@ -2,17 +2,17 @@
 
 **One day, I discovered the secret of my good friend 😅**
 
-![ilve1](ilve1.png)
+![ilve1](/docs/ilve1.png)
 
 **let's see what's there 😍**
 
-![live2](live2.png)
+![live2](/docs/live2.png)
 
 **It looks great, but it's encrypted, what to do?**
 
-![live4](live4.png)
+![live4](/docs/live4.png)
 
-![live3](live3.png)
+![live3](/docs/live3.png)
 
 **Happy Children's Day**
 
@@ -31,4 +31,3 @@ PDF_Decrypt -in /User/tom/Documents/PDFS \
 -out /User/tom/Documents/PDFOUT \
 -pass "123456\\12345678\\abcdefg"
 ```
-
