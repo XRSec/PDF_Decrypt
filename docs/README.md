@@ -16,7 +16,7 @@
 
 **Happy Children's Day**
 
-[![version](https://img.shields.io/badge/depend on-pdfcpu-da282a)](https://pdfcpu.io/)
+[![depend](https://img.shields.io/badge/depend%20on-pdfcpu-da282a)](https://pdfcpu.io/)
 
 ## Use
 
