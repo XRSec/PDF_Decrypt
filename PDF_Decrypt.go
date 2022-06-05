@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -17,12 +18,13 @@ import (
 
 var (
 	buildTime, commitId, versionData, author string
-	inputFolder, outputFolder, passWord      string
+	inputFolder, outputFolder, passWords     string
 	help, version                            bool
 )
 
 var (
-	fileList []string
+	fileList  []string
+	errorList []string
 )
 
 func Flag() {
@@ -32,7 +34,7 @@ func Flag() {
 	flag.BoolVar(&version, "version", false, "PDF_Decrypt version")
 	flag.StringVar(&inputFolder, "in", "PDF", "in explorer")
 	flag.StringVar(&outputFolder, "out", "out", "out explorer")
-	flag.StringVar(&passWord, "pass", "123456", "password ('abc' | 'abc\\def\\ghi')")
+	flag.StringVar(&passWords, "pass", "123456", "password ('abc' | 'abc\\def\\ghi')")
 }
 
 func passWordLists(passWord string) []string {
@@ -51,6 +53,15 @@ func adsPath(folder string) string {
 	return adspath
 }
 
+func relPath(basePath, targPath string) (relPath string) {
+	var err error
+	if relPath, err = filepath.Rel(adsPath(basePath), targPath); err != nil {
+		_, _ = color.New(color.FgYellow).Println(err)
+		os.Exit(1)
+	}
+	return relPath
+}
+
 func inputFolders(filePath string) []string {
 	if err := filepath.Walk(adsPath(filePath), func(path string, info os.FileInfo, err error) error {
 		if filepath.Ext(path) == ".pdf" {
@@ -58,10 +69,7 @@ func inputFolders(filePath string) []string {
 		}
 		if info.IsDir() {
 			var outFileName, outFilePath string
-			if outFileName, err = filepath.Rel(adsPath(inputFolder), path); err != nil {
-				_, _ = color.New(color.FgYellow).Println(err)
-				os.Exit(1)
-			}
+			outFileName = relPath(adsPath(inputFolder), path)
 			outFilePath = filepath.Join(outputFolder, outFileName)
 			if _, err := os.Stat(outFilePath); err != nil {
 				if err := os.Mkdir(outFilePath, 0755); err != nil {
@@ -102,6 +110,9 @@ func outPutFolderClean(filePath string) {
 		os.Exit(1)
 	}
 	if len(files) == 0 {
+		if filePath == outputFolder {
+			return
+		}
 		if err := os.Remove(filePath); err != nil {
 			_, _ = color.New(color.FgYellow).Println(err)
 			os.Exit(1)
@@ -119,16 +130,15 @@ func outPutFolderClean(filePath string) {
 
 func Decrypt(fileList []string) {
 	for _, v := range fileList {
-		for _, p := range passWordLists(passWord) {
+		for _, p := range passWordLists(passWords) {
 			if DecryptFile(v, p) {
 				break
 			}
 		}
 	}
-
 }
 
-func DecryptFile(filePath, p string) bool {
+func DecryptFile(filePath, pass string) bool {
 	//conf.UserPW = i
 	filePath = adsPath(filePath)
 	if !pdfcpu.MemberOf(pdfcpu.ConfigPath, []string{"default", "disable"}) {
@@ -138,30 +148,61 @@ func DecryptFile(filePath, p string) bool {
 		}
 	}
 	conf := pdfcpu.NewDefaultConfiguration()
-	conf.OwnerPW = p
+	conf.OwnerPW = pass
 	_, _ = color.New(color.FgCyan).Printf(" Decrypting: ")
 	_, _ = color.New(color.FgWhite).Printf(path.Base(filePath))
-	outFileRouter, _ := filepath.Rel(adsPath(inputFolder), filePath)
+	outFileRouter := relPath(adsPath(inputFolder), filePath)
 	outFilePath := path.Join(adsPath(outputFolder), outFileRouter)
 	if err := api.DecryptFile(filePath, outFilePath, conf); err != nil {
-		if strings.Contains(err.Error(), "not encrypted") {
-			_, _ = color.New(color.FgGreen).Println("Not encrypted")
+		type errorFile struct {
+			Index  int
+			Error  error
+			Status bool
+		}
+		var (
+			errFile = errorFile{
+				Index:  0,
+				Error:  err,
+				Status: false,
+			}
+			errPath string
+		)
+		if strings.Contains(errFile.Error.Error(), "not encrypted") {
+			_, _ = color.New(color.FgGreen).Println(" Not encrypted")
 			var l3 []byte
 			if l3, err = ioutil.ReadFile(filePath); err != nil {
-				_, _ = color.New(color.FgYellow).Println(err)
+				_, _ = color.New(color.FgYellow).Println(" ", err)
 				os.Exit(1)
 			}
 			if err = ioutil.WriteFile(outFilePath, l3, 0644); err != nil {
-				_, _ = color.New(color.FgYellow).Println(err)
+				_, _ = color.New(color.FgYellow).Println(" ", err)
 				os.Exit(1)
 			}
 			return true
 		}
-		_, _ = color.New(color.FgYellow).Println(err)
+		for i, v := range errorList {
+			if strings.Contains(v, relPath(adsPath(inputFolder), filePath)) {
+				errFile.Status = true
+				errFile.Index = i
+			}
+		}
+		errPath = relPath(adsPath(inputFolder), filePath)
+		if strings.Contains(errFile.Error.Error(), "correct password") {
+			errFile.Error = errors.New("PassError:" + pass)
+			errPath += ":PassError\n"
+		} else {
+			errPath += fmt.Sprintf(":[%v]\n", errFile.Error.Error())
+		}
+		if errFile.Status {
+			errorList[errFile.Index] = errPath
+		} else {
+			errorList = append(errorList, errPath)
+		}
+		_, _ = color.New(color.FgYellow).Println(fmt.Sprintf(" %v", errFile.Error))
 		return false
 	}
 	_, _ = color.New(color.FgGreen).Printf(" Decrypted!")
-	_, _ = color.New(color.FgWhite).Println(" PassWord:", p)
+	_, _ = color.New(color.FgWhite).Println(" PassWord:", pass)
 	return true
 }
 
@@ -172,20 +213,20 @@ func main() {
 	}()
 	Flag()
 	flag.Parse()
-	if help || len(os.Args) == 1 {
-		fmt.Println(` Usage of PDF_Decrypt:
-   -help -h
-         Display help information
-   -in string
-         in explorer
-   -out string
-         out explorer
-   -pass string
-         password (abc | abc\\def\\ghi)
-   -version -v
-         PDF_Decrypt version`)
-		return
-	}
+	//if help || len(os.Args) == 1 {
+	//	fmt.Println(` Usage of PDF_Decrypt:
+	//-help -h
+	//      Display help information
+	//-in string
+	//      in explorer
+	//-out string
+	//      out explorer
+	//-pass string
+	//      password (abc | abc\\def\\ghi)
+	//-version -v
+	//      PDF_Decrypt version`)
+	//	return
+	//}
 	if version {
 		_, _ = color.New(color.FgMagenta).Println(" |  Version:", versionData)
 		_, _ = color.New(color.FgMagenta).Println(" |  BuildTime:", buildTime)
@@ -196,8 +237,9 @@ func main() {
 	_, _ = color.New(color.FgMagenta).Println(" Start PDF_Decrypt ...")
 	outPutFolder(outputFolder)
 	Decrypt(inputFolders(inputFolder))
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 50; i++ {
 		outPutFolderClean(outputFolder)
 	}
 	_, _ = color.New(color.FgGreen).Printf("\n Decrypted %v File\n", len(fileList))
+	_, _ = color.New(color.FgGreen).Printf(" Decrypt Error %v Files: %v\n", len(errorList), errorList)
 }
