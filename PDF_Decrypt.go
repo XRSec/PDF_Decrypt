@@ -167,6 +167,9 @@ func DecryptFile(filePath, p string) bool {
 
 func main() {
 	_, _ = color.New(color.FgMagenta).Println("\n --------------------------------------")
+	defer func() {
+		_, _ = color.New(color.FgMagenta).Println(" --------------------------------------\n")
+	}()
 	Flag()
 	flag.Parse()
 	if help || len(os.Args) == 1 {
@@ -180,7 +183,7 @@ func main() {
    -pass string
          password (abc | abc\\def\\ghi)
    -version -v
-         PDF_Decrypt version`, "\n")
+         PDF_Decrypt version`)
 		return
 	}
 	if version {
@@ -188,13 +191,12 @@ func main() {
 		_, _ = color.New(color.FgMagenta).Println(" |  BuildTime:", buildTime)
 		_, _ = color.New(color.FgMagenta).Println(" |  Author:", author)
 		_, _ = color.New(color.FgMagenta).Println(" |  CommitId:", commitId)
-		_, _ = color.New(color.FgMagenta).Println(" --------------------------------------")
 		return
 	}
 	_, _ = color.New(color.FgMagenta).Println(" Start PDF_Decrypt ...")
 	outPutFolder(outputFolder)
 	Decrypt(inputFolders(inputFolder))
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 15; i++ {
 		outPutFolderClean(outputFolder)
 	}
 	_, _ = color.New(color.FgGreen).Printf("\n Decrypted %v File\n", len(fileList))
